@@ -1,0 +1,13 @@
+numpy
+pandas
+scikit-learn
+matplotlib
+seaborn
+xgboost
+nrel-dev-api
+requests
+dotenv
+xgboost
+shap
+streamlit
+pydeck
