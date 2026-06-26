@@ -4,10 +4,8 @@ scikit-learn
 matplotlib
 seaborn
 xgboost
-nrel-dev-api
 requests
-dotenv
-xgboost
+python-dotenv
 shap
 streamlit
 pydeck

@@ -127,7 +127,7 @@ def run():
     simulate_df.to_sql("utilization_forecast", conn, if_exists="replace", index=False)
     conn.close()
 
-    print("\nWritten to data/ev_forecasting.db in table 'utilization_forecast'.")
+    print("\nWritten to data/ev_stations.db in table 'utilization_forecast'.")
 
 if __name__ == "__main__":
     run()

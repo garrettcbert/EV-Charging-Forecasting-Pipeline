@@ -1,1 +1,8 @@
 .env
+models/
+data/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+ev_charging_stations.json
+weather_lookup.json

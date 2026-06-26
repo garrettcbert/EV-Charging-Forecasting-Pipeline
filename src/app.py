@@ -145,7 +145,7 @@ tooltip = {
 st.title("EV Charging Demand Forecaster")
 st.markdown(
     "Explore predicted charging station utilization across Wisconsin. "
-    "Select a station to see its predicted deman curve throughout the day."
+    "Select a station to see its predicted demand curve throughout the day."
 )
 
 tab1, tab2, tab3 = st.tabs(["Overview", "Station Detail", "Network Insights"])

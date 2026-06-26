@@ -42,7 +42,7 @@ def prepare_features(df):
     )
 
     X_train_encoded = encoder.fit_transform(X_train)
-    X_test_encoded = encoder.fit_transform(X_test)
+    X_test_encoded = encoder.transform(X_test)
 
     return X_train_encoded, X_test_encoded, y_train, y_test, encoder
 
