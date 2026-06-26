@@ -4,25 +4,7 @@ import sqlite3
 from datetime import datetime, timedelta
 import random
 
-# Load stations from database
-conn = sqlite3.connect("data/ev_stations.db")
-df = pd.read_sql_query("SELECT * FROM station_snapshots", conn)
-conn.close()
-
-print(f'Loaded {len(df)} stations from database.')
-
-# Higher tier = higher base usage
-network_tiers = {
-    "Tesla Destination": 0.75,
-    "Chargeback Network": 0.65,
-    "Blink Network": 0.5,
-    "Electrify America": 0.6,
-    "EVgo": 0.55,
-    "ZEFNET": 0.2,
-    "Non-Networked": 0.1
-}
-
-def get_network_tier(network):
+def get_network_tier(network, network_tiers):
     for key in network_tiers:
         if key.lower() in str(network).lower():
             return network_tiers[key]
@@ -77,55 +59,75 @@ def weather_adjustment(temp, condition):
 
     return adjustment
 
-records = []
-base_time = datetime(2024, 6, 1, 0, 0, 0, 0) # start of June
+def run():
+    conn = sqlite3.connect("data/ev_stations.db")
+    df = pd.read_sql_query("SELECT * FROM station_snapshots", conn)
+    conn.close()
 
-for day_offset in range(7):
-    for hour in range(24):
-        snapshot_time = base_time + timedelta(days=day_offset, hours=hour)
-        is_weekend = snapshot_time.weekday() >= 5
+    print(f"Loaded {len(df)} stations from database.")
 
-        for _, station in df.iterrows():
-            network_base = get_network_tier(station['network'])
-            time_weight = hour_weight(hour, is_weekend)
-            weather_adj = weather_adjustment(
-                station.get('temperature', 60),
-                station.get('weather_condition', 'clear')
-            )
-            fast_hub_bonus = 0.08 if station.get('is_fast_charging_hub', 0) == 1 else 0.0
-            noise = random.gauss(0, 0.05) # Add some randomness
+    network_tiers = {
+        "Tesla Destination": 0.75,
+        "Chargeback Network": 0.65,
+        "Blink Network": 0.5,
+        "Electrify America": 0.6,
+        "EVgo": 0.55,
+        "ZEFNET": 0.2,
+        "Non-Networked": 0.1
+    }
 
-            utilization = network_base * time_weight + weather_adj + fast_hub_bonus + noise
-            if utilization < 0.02:
-                utilization = random.uniform(0.01, 0.05)
-            else:
-                utilization = float(np.clip(utilization, 0.0, 1.0))
+    records = []
+    base_time = datetime(2024, 6, 1, 0, 0, 0, 0)
 
-            records.append({
-                "station_id": station['station_id'],
-                "snapshot_time": snapshot_time.isoformat(),
-                "hour": hour,
-                "day_of_week": snapshot_time.weekday(),
-                "is_weekend": is_weekend,
-                "network": station['network'],
-                "total_ports": station['total_ports'],
-                "is_fast_charging_hub": station['is_fast_charging_hub'],
-                "fast_charger_ratio": station['fast_charger_ratio'],
-                "temperature": station.get('temperature', None),
-                "humidity": station.get('humidity', None),
-                "wind_speed": station.get('wind_speed', None),
-                "weather_condition": station.get('weather_condition', 'clear'),
-                "utilization_rate": utilization
-            })
+    for day_offset in range(7):
+        for hour in range(24):
+            snapshot_time = base_time + timedelta(days=day_offset, hours=hour)
+            is_weekend = snapshot_time.weekday() >= 5
 
-simulate_df = pd.DataFrame(records)
+            for _, station in df.iterrows():
+                network_base = get_network_tier(station['network'], network_tiers)
+                time_weight = hour_weight(hour, is_weekend)
+                weather_adj = weather_adjustment(
+                    station.get('temperature', 60),
+                    station.get('weather_condition', 'clear')
+                )
+                fast_hub_bonus = 0.08 if station.get('is_fast_charging_hub', 0) == 1 else 0.0
+                noise = random.gauss(0, 0.05) # Add some randomness
 
-print(f"Generated {len(simulate_df)} simulated utilization records.")
-print(simulate_df[['snapshot_time', 'network', 'total_ports', 'is_fast_charging_hub', 'temperature', 'weather_condition', 'utilization_rate']].head())
-print(f"Utilization stats - mean: {simulate_df['utilization_rate'].mean():.3f}, min: {simulate_df['utilization_rate'].min():.3f}, max: {simulate_df['utilization_rate'].max():.3f}")
+                utilization = network_base * time_weight + weather_adj + fast_hub_bonus + noise
+                if utilization < 0.02:
+                    utilization = random.uniform(0.01, 0.05)
+                else:
+                    utilization = float(np.clip(utilization, 0.0, 1.0))
 
-conn = sqlite3.connect("data/ev_stations.db")
-simulate_df.to_sql("utilization_forecast", conn, if_exists="replace", index=False)
-conn.close()
+                records.append({
+                    "station_id": station['station_id'],
+                    "snapshot_time": snapshot_time.isoformat(),
+                    "hour": hour,
+                    "day_of_week": snapshot_time.weekday(),
+                    "is_weekend": is_weekend,
+                    "network": station['network'],
+                    "total_ports": station['total_ports'],
+                    "is_fast_charging_hub": station['is_fast_charging_hub'],
+                    "fast_charger_ratio": station['fast_charger_ratio'],
+                    "temperature": station.get('temperature', None),
+                    "humidity": station.get('humidity', None),
+                    "wind_speed": station.get('wind_speed', None),
+                    "weather_condition": station.get('weather_condition', 'clear'),
+                    "utilization_rate": utilization
+                })
 
-print("\nWritten to data/ev_forecasting.db in table 'utilization_forecast'.")
+    simulate_df = pd.DataFrame(records)
+
+    print(f"Generated {len(simulate_df)} simulated utilization records.")
+    print(simulate_df[['snapshot_time', 'network', 'total_ports', 'is_fast_charging_hub', 'temperature', 'weather_condition', 'utilization_rate']].head())
+    print(f"Utilization stats - mean: {simulate_df['utilization_rate'].mean():.3f}, min: {simulate_df['utilization_rate'].min():.3f}, max: {simulate_df['utilization_rate'].max():.3f}")
+
+    conn = sqlite3.connect("data/ev_stations.db")
+    simulate_df.to_sql("utilization_forecast", conn, if_exists="replace", index=False)
+    conn.close()
+
+    print("\nWritten to data/ev_forecasting.db in table 'utilization_forecast'.")
+
+if __name__ == "__main__":
+    run()
