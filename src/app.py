@@ -73,6 +73,11 @@ for hour in hours:
         "temperature": selected_station["temperature"],
         "humidity": selected_station["humidity"],
         "wind_speed": selected_station["wind_speed"],
+        "num_connector_types": selected_station["num_connector_types"],
+        "is_free_charging": selected_station["is_free_charging"],
+        "is_public": selected_station["is_public"],
+        "nearby_station_count": selected_station["nearby_station_count"],
+        "station_age_years": selected_station["station_age_years"],
         "network": selected_station["network"],
         "weather_condition": selected_station["weather_condition"],
     })
@@ -82,7 +87,9 @@ pred_df = pd.DataFrame(prediction_rows)
 categorical_cols = ['network', 'weather_condition']
 numeric_cols = ['hour', 'day_of_week', 'is_weekend', 'total_ports',
                 'is_fast_charging_hub', 'fast_charger_ratio',
-                'temperature', 'humidity', 'wind_speed']
+                'temperature', 'humidity', 'wind_speed',
+                'num_connector_types', 'is_free_charging', 'is_public',
+                'nearby_station_count', 'station_age_years']
 
 X_pred = pred_df[numeric_cols + categorical_cols]
 X_pred_encoded = encoder.transform(X_pred)
@@ -192,10 +199,25 @@ with tab2:
     explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(X_explain_encoded)
 
-    feature_names = encoder.get_feature_names_out()
+    def clean_feature_name(name):
+        if name.startswith("cat__"):
+            raw = name[len("cat__"):]
+            for col in categorical_cols:
+                prefix = f"{col}_"
+                if raw.startswith(prefix):
+                    label = col.replace("_", " ").title()
+                    value = raw[len(prefix):]
+                    return f"{label}: {value}"
+            return raw.replace("_", " ").title()
+        if name.startswith("remainder__"):
+            return name[len("remainder__"):].replace("_", " ").title()
+        return name.replace("_", " ").title()
+
+    raw_feature_names = encoder.get_feature_names_out()
+    feature_names = [clean_feature_name(name) for name in raw_feature_names]
     X_explain_df = pd.DataFrame(X_explain_encoded, columns = feature_names)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize = (8, 6))
     shap.plots.bar(
         shap.Explanation(
             values = shap_values[0],
@@ -205,6 +227,7 @@ with tab2:
         ),
         show = False
     )
+    plt.tight_layout()
 
     st.pyplot(fig)
 
@@ -229,6 +252,11 @@ with tab3:
                 "temperature": sample_station["temperature"],
                 "humidity": sample_station["humidity"],
                 "wind_speed": sample_station["wind_speed"],
+                "num_connector_types": sample_station["num_connector_types"],
+                "is_free_charging": sample_station["is_free_charging"],
+                "is_public": sample_station["is_public"],
+                "nearby_station_count": sample_station["nearby_station_count"],
+                "station_age_years": sample_station["station_age_years"],
                 "network": sample_station["network"],
                 "weather_condition": sample_station["weather_condition"],
             }])

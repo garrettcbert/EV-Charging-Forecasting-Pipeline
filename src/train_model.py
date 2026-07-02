@@ -23,7 +23,12 @@ def prepare_features(df):
                     'fast_charger_ratio',
                     'temperature',
                     'humidity',
-                    'wind_speed',]
+                    'wind_speed',
+                    'num_connector_types',
+                    'is_free_charging',
+                    'is_public',
+                    'nearby_station_count',
+                    'station_age_years',]
 
     categorical_cols = ['network', 'weather_condition']
 

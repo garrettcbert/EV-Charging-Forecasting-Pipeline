@@ -92,9 +92,17 @@ def run():
                     station.get('weather_condition', 'clear')
                 )
                 fast_hub_bonus = 0.08 if station.get('is_fast_charging_hub', 0) == 1 else 0.0
+                free_charging_bonus = 0.05 if station.get('is_free_charging', 0) == 1 else 0.0
+                density_penalty = -0.01 * min(station.get('nearby_station_count', 0), 5)
+                age_bonus = min(station.get('station_age_years', 0) * 0.01, 0.05)
+                public_bonus = 0.05 if station.get('is_public', 1) == 1 else -0.05
                 noise = random.gauss(0, 0.05) # Add some randomness
 
-                utilization = network_base * time_weight + weather_adj + fast_hub_bonus + noise
+                utilization = (
+                    network_base * time_weight + weather_adj + fast_hub_bonus
+                    + free_charging_bonus + density_penalty + age_bonus + public_bonus
+                    + noise
+                )
                 if utilization < 0.02:
                     utilization = random.uniform(0.01, 0.05)
                 else:
@@ -114,6 +122,11 @@ def run():
                     "humidity": station.get('humidity', None),
                     "wind_speed": station.get('wind_speed', None),
                     "weather_condition": station.get('weather_condition', 'clear'),
+                    "num_connector_types": station.get('num_connector_types', 1),
+                    "is_free_charging": station.get('is_free_charging', 0),
+                    "is_public": station.get('is_public', 1),
+                    "nearby_station_count": station.get('nearby_station_count', 0),
+                    "station_age_years": station.get('station_age_years', 0),
                     "utilization_rate": utilization
                 })
 

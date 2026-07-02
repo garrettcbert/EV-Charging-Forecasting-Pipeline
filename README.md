@@ -19,7 +19,7 @@ This project fetches EV charging station data from the NREL API and weather data
 ```
 ├── src/
 │   ├── run_pipeline.py      # Orchestrates the full ETL + training pipeline
-│   ├── extract_api.py       # Fetches data from NREL and OpenWeatherMap APIs
+│   ├── extract_api.py       # Fetches data from NRL and OpenWeatherMap APIs
 │   ├── transform_load.py    # Cleans data and loads into SQLite
 │   ├── simulate_target.py   # Generates simulated utilization data
 │   ├── train_model.py       # Trains and evaluates XGBoost model
