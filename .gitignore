@@ -1,8 +1,10 @@
 .env
 models/
 data/
+.conda/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+.DS_Store
 ev_charging_stations.json
 weather_lookup.json
