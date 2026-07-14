@@ -1,6 +1,5 @@
+.vscode
 .env
-models/
-data/
 .conda/
 __pycache__/
 *.pyc

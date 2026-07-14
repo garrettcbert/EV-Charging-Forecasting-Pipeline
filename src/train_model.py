@@ -8,7 +8,7 @@ import xgboost as xgb
 import pickle
 
 def load_data(db_path = 'data/ev_stations.db'):
-    conn = sqlite3.connect("data/ev_stations.db")
+    conn = sqlite3.connect(db_path)
     df = pd.read_sql_query("SELECT * FROM utilization_forecast", conn)
     conn.close()
     return df
@@ -39,12 +39,21 @@ def prepare_features(df):
         remainder='passthrough'
     )
 
-    X = df[numeric_cols + categorical_cols]
-    y = df['utilization_rate']
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.33, random_state = 0
+    # Split by station rather than by row: each station appears many times
+    # (once per simulated hour), so a row-level split would leak near-duplicate
+    # rows of the same station into both train and test.
+    station_ids = df['station_id'].unique()
+    train_ids, test_ids = train_test_split(
+        station_ids, test_size=0.33, random_state=0
     )
+
+    train_df = df[df['station_id'].isin(train_ids)]
+    test_df = df[df['station_id'].isin(test_ids)]
+
+    X_train = train_df[numeric_cols + categorical_cols]
+    y_train = train_df['utilization_rate']
+    X_test = test_df[numeric_cols + categorical_cols]
+    y_test = test_df['utilization_rate']
 
     X_train_encoded = encoder.fit_transform(X_train)
     X_test_encoded = encoder.transform(X_test)

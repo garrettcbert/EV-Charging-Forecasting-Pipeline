@@ -1,11 +1,13 @@
 import streamlit as st
 import pickle
 import sqlite3
+import os
+from datetime import datetime
 import pandas as pd
 import pydeck as pdk
-import xgboost as xgb
 import shap
 import matplotlib.pyplot as plt
+import altair as alt
 
 st.set_page_config(
     page_title = 'EV Charging Demand Forecast',
@@ -35,11 +37,26 @@ stations_df = load_station_data()
 
 st.sidebar.header("Filter Stations")
 
+all_networks = sorted(stations_df['network'].unique())
+
+if "network_filter" not in st.session_state:
+    st.session_state.network_filter = all_networks
+
+col_select_all, col_clear_all = st.sidebar.columns(2)
+if col_select_all.button("Select all", use_container_width=True):
+    st.session_state.network_filter = all_networks
+if col_clear_all.button("Clear all", use_container_width=True):
+    st.session_state.network_filter = []
+
 network_filter = st.sidebar.multiselect(
     'Network',
-    options = stations_df['network'].unique(),
-    default = stations_df['network'].unique()
+    options = all_networks,
+    key = "network_filter"
 )
+
+if not network_filter:
+    st.sidebar.warning("Select at least one network to see stations.")
+    st.stop()
 
 filtered_stations = stations_df[stations_df['network'].isin(network_filter)]
 
@@ -111,15 +128,14 @@ network_colors = {
 map_df = filtered_stations.copy()
 
 
-# ISSUE: ALL MARKERS LOOK THE SAME SIZE
 def get_color_for_row(row):
     if row['station_id'] == selected_station['station_id']:
-        return [250, 0, 0] # gold
+        return [250, 0, 0] # red
     return network_colors.get(row['network'], [0, 0, 0])
 
 def get_radius_for_row(row):
     if row['station_id'] == selected_station['station_id']:
-        return 1200
+        return 700
     return 350
 
 # Highlight the selected station with a more distinct marker
@@ -139,9 +155,9 @@ layer = pdk.Layer(
 )
 
 view_state = pdk.ViewState(
-    latitude = filtered_stations['latitude'].mean(),
-    longitude= filtered_stations['longitude'].mean(),
-    zoom = 8
+    latitude = selected_station['latitude'],
+    longitude = selected_station['longitude'],
+    zoom = 11
 )
 
 tooltip = {
@@ -154,6 +170,34 @@ st.markdown(
     "Explore predicted charging station utilization across Wisconsin. "
     "Select a station to see its predicted demand curve throughout the day."
 )
+
+model_built_time = datetime.fromtimestamp(os.path.getmtime("models/xgboost_ev_model.pkl"))
+st.caption(f"Model last built: {model_built_time.strftime('%B %d, %Y at %I:%M %p')}")
+
+with st.expander("About this app & how it works"):
+    st.markdown(
+        """
+This app forecasts hourly **charging station utilization** (the predicted fraction
+of a station's capacity in use) for public EV charging stations in Wisconsin.
+
+**How the pipeline works:**
+1. **Extract** - station data (location, network, port counts) is pulled from the
+   National Labratory of the Rockies Alternative Fuel Stations API, and current weather (temperature, humidity,
+   wind, conditions) is pulled from OpenWeatherMap for each station's location.
+2. **Transform** - the raw data is cleaned and enriched with derived features such
+   as total ports, fast-charger ratio, nearby station density, and station age.
+3. **Simulate** - since real observed utilization isn't available, an hourly
+   utilization value is *simulated* using heuristics based on network type,
+   time-of-day demand curves, and weather effects. This is the target the model
+   learns to predict.
+4. **Train** - an XGBoost regression model is trained on the simulated data to
+   predict utilization from station and weather features.
+5. **Explain** - SHAP values show which features push a given prediction up or down.
+
+**Note:** because the target variable is simulated rather than measured, predictions
+reflect the patterns encoded in the simulation logic, not ground-truth station usage.
+        """
+    )
 
 tab1, tab2, tab3 = st.tabs(["Overview", "Station Detail", "Network Insights"])
 
@@ -182,96 +226,128 @@ with tab2:
     st.subheader("Predicted Demand Curve")
 
 
-    st.line_chart(pred_df.set_index('hour')['predicted_utilization'])
+    demand_chart = alt.Chart(pred_df).mark_line(point=True).encode(
+        x=alt.X('hour:Q', title='Hour of Day', scale=alt.Scale(domain=[0, 23])),
+        y=alt.Y('predicted_utilization:Q', title='Predicted Utilization',
+                axis=alt.Axis(format='%')),
+        tooltip=[alt.Tooltip('hour:Q', title='Hour'),
+                 alt.Tooltip('predicted_utilization:Q', title='Predicted Utilization', format='.1%')]
+    ).properties(height=350)
+
+    st.altair_chart(demand_chart, use_container_width=True)
     st.caption(
         "Curve shape is primarily driven by time of day; network type and "
         "weather shift the overall demand level rather than the shape of the curve."
     )
 
     st.subheader("Why this Prediction?")
+    st.markdown(
+        "The chart below shows a **SHAP (SHapley Additive exPlanations)** breakdown "
+        "for the prediction at the hour you pick. The model starts from a baseline "
+        "prediction (the average utilization across all training data), and each "
+        "feature pushes that baseline up or down to arrive at this station's "
+        "predicted utilization for the selected hour:\n"
+        "- **Bars extending right (positive)** increase the predicted utilization above the baseline.\n"
+        "- **Bars extending left (negative)** decrease it below the baseline.\n"
+        "- **Bar length** reflects how much that feature mattered for *this specific* "
+        "prediction - longer bars are bigger drivers, not necessarily 'better' or 'worse' values.\n\n"
+        "This shows *why the model predicted what it did*, not a statement of real-world cause and effect."
+    )
 
     selected_hour = st.slider("Hour to explain", 0, 23, 17)
 
-    explain_row = pred_df[pred_df['hour'] == selected_hour]
-    X_explain = explain_row[numeric_cols + categorical_cols]
-    X_explain_encoded = encoder.transform(X_explain)
+    with st.spinner("Computing SHAP explanation..."):
+        explain_row = pred_df[pred_df['hour'] == selected_hour]
+        X_explain = explain_row[numeric_cols + categorical_cols]
+        X_explain_encoded = encoder.transform(X_explain)
 
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_explain_encoded)
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_explain_encoded)
 
-    def clean_feature_name(name):
-        if name.startswith("cat__"):
-            raw = name[len("cat__"):]
-            for col in categorical_cols:
-                prefix = f"{col}_"
-                if raw.startswith(prefix):
-                    label = col.replace("_", " ").title()
-                    value = raw[len(prefix):]
-                    return f"{label}: {value}"
-            return raw.replace("_", " ").title()
-        if name.startswith("remainder__"):
-            return name[len("remainder__"):].replace("_", " ").title()
-        return name.replace("_", " ").title()
+        def clean_feature_name(name):
+            if name.startswith("cat__"):
+                raw = name[len("cat__"):]
+                for col in categorical_cols:
+                    prefix = f"{col}_"
+                    if raw.startswith(prefix):
+                        label = col.replace("_", " ").title()
+                        value = raw[len(prefix):]
+                        return f"{label}: {value}"
+                return raw.replace("_", " ").title()
+            if name.startswith("remainder__"):
+                return name[len("remainder__"):].replace("_", " ").title()
+            return name.replace("_", " ").title()
 
-    raw_feature_names = encoder.get_feature_names_out()
-    feature_names = [clean_feature_name(name) for name in raw_feature_names]
-    X_explain_df = pd.DataFrame(X_explain_encoded, columns = feature_names)
+        raw_feature_names = encoder.get_feature_names_out()
+        feature_names = [clean_feature_name(name) for name in raw_feature_names]
+        X_explain_df = pd.DataFrame(X_explain_encoded, columns = feature_names)
 
-    fig, ax = plt.subplots(figsize = (8, 6))
-    shap.plots.bar(
-        shap.Explanation(
-            values = shap_values[0],
-            base_values = explainer.expected_value,
-            data = X_explain_df.iloc[0],
-            feature_names = feature_names
-        ),
-        show = False
-    )
-    plt.tight_layout()
+        fig, ax = plt.subplots(figsize = (8, 6))
+        shap.plots.bar(
+            shap.Explanation(
+                values = shap_values[0],
+                base_values = explainer.expected_value,
+                data = X_explain_df.iloc[0],
+                feature_names = feature_names
+            ),
+            show = False
+        )
+        plt.tight_layout()
 
     st.pyplot(fig)
 
 with tab3:
     st.subheader("Average Utilization by Network")
-
-    networks = filtered_stations['network'].unique()
-    network_avg_rows = []
-
-    for network in networks:
-        sample_station = filtered_stations[filtered_stations['network'] == network].iloc[0]
-
-        hourly_pred = []
-        for hour in range(24):
-            row = pd.DataFrame([{
-                "hour": hour,
-                "day_of_week": 1,
-                "is_weekend": 0,
-                "total_ports": sample_station["total_ports"],
-                "is_fast_charging_hub": sample_station["is_fast_charging_hub"],
-                "fast_charger_ratio": sample_station["fast_charger_ratio"],
-                "temperature": sample_station["temperature"],
-                "humidity": sample_station["humidity"],
-                "wind_speed": sample_station["wind_speed"],
-                "num_connector_types": sample_station["num_connector_types"],
-                "is_free_charging": sample_station["is_free_charging"],
-                "is_public": sample_station["is_public"],
-                "nearby_station_count": sample_station["nearby_station_count"],
-                "station_age_years": sample_station["station_age_years"],
-                "network": sample_station["network"],
-                "weather_condition": sample_station["weather_condition"],
-            }])
-
-            encoded_row = encoder.transform(row)
-            hourly_pred.append(model.predict(encoded_row)[0])
-        
-        network_avg_rows.append({
-            'network': network,
-            'avg_predicted_utilization': sum(hourly_pred) / len(hourly_pred)
-        })
-
-    network_df = pd.DataFrame(network_avg_rows).sort_values(
-        'avg_predicted_utilization', ascending = False
+    st.markdown(
+        "For each network currently shown (based on the sidebar filter), one "
+        "representative station is picked and the model predicts its utilization "
+        "for every hour of a weekday (Tuesday). The bar for each network is the "
+        "**average of those 24 hourly predictions**, a rough measure of which "
+        "networks the model expects to run hotter or cooler on average, given "
+        "their typical port counts, fast-charging mix, and pricing. Because a single "
+        "sample station stands in for the whole network, this comparison is most "
+        "meaningful when a network's stations are fairly similar to one another."
     )
+
+    with st.spinner("Calculating average utilization by network..."):
+        networks = filtered_stations['network'].unique()
+        network_avg_rows = []
+
+        for network in networks:
+            sample_station = filtered_stations[filtered_stations['network'] == network].iloc[0]
+
+            hourly_pred = []
+            for hour in range(24):
+                row = pd.DataFrame([{
+                    "hour": hour,
+                    "day_of_week": 1,
+                    "is_weekend": 0,
+                    "total_ports": sample_station["total_ports"],
+                    "is_fast_charging_hub": sample_station["is_fast_charging_hub"],
+                    "fast_charger_ratio": sample_station["fast_charger_ratio"],
+                    "temperature": sample_station["temperature"],
+                    "humidity": sample_station["humidity"],
+                    "wind_speed": sample_station["wind_speed"],
+                    "num_connector_types": sample_station["num_connector_types"],
+                    "is_free_charging": sample_station["is_free_charging"],
+                    "is_public": sample_station["is_public"],
+                    "nearby_station_count": sample_station["nearby_station_count"],
+                    "station_age_years": sample_station["station_age_years"],
+                    "network": sample_station["network"],
+                    "weather_condition": sample_station["weather_condition"],
+                }])
+
+                encoded_row = encoder.transform(row)
+                hourly_pred.append(model.predict(encoded_row)[0])
+
+            network_avg_rows.append({
+                'network': network,
+                'avg_predicted_utilization': sum(hourly_pred) / len(hourly_pred)
+            })
+
+        network_df = pd.DataFrame(network_avg_rows).sort_values(
+            'avg_predicted_utilization', ascending = False
+        )
 
     st.bar_chart(network_df.set_index('network')['avg_predicted_utilization'])
 

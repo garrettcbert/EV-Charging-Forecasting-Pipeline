@@ -8,20 +8,20 @@ import time
 load_dotenv()
 
 def run():
-    NRL_API = os.getenv("NRL_KEY")
+    NLR_API = os.getenv("NLR_KEY")
     WEATHER_API = os.getenv("WEATHER_KEY")
 
-    ## Extract EV charging station data from NREL API and save to JSON
-    NRL_URL = f"https://developer.nlr.gov/api/alt-fuel-stations/v1.json"
+    ## Extract EV charging station data from NLR API and save to JSON
+    NLR_URL = f"https://developer.nlr.gov/api/alt-fuel-stations/v1.json"
 
     params = {
-        "api_key": NRL_API,
+        "api_key": NLR_API,
         "fuel_type": "ELEC",
         "limit": 200,
         "state": "WI"
     }
 
-    response = requests.get(NRL_URL, params=params, timeout = 15)
+    response = requests.get(NLR_URL, params=params, timeout = 15)
     response.raise_for_status()
 
     ev_data = response.json()

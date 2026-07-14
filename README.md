@@ -4,11 +4,11 @@ A machine learning pipeline that predicts EV charging station utilization in Wis
 
 ## Overview
 
-This project fetches EV charging station data from the NREL API and weather data from OpenWeatherMap, then trains an XGBoost regression model to forecast hourly utilization rates. An interactive Streamlit dashboard allows users to explore predictions and understand model behavior through SHAP explanations.
+This project fetches EV charging station data from the NLR API and weather data from OpenWeatherMap, then trains an XGBoost regression model to forecast hourly utilization rates. An interactive Streamlit dashboard allows users to explore predictions and understand model behavior through SHAP explanations.
 
 ## Features
 
-- **Data Extraction**: Pulls EV charging station data from NREL and current weather from OpenWeatherMap
+- **Data Extraction**: Pulls EV charging station data from NLR and current weather from OpenWeatherMap
 - **Data Transformation**: Cleans and enriches data with features like fast-charger ratio and total ports
 - **Utilization Simulation**: Generates realistic utilization patterns based on network type, time-of-day, and weather
 - **ML Model Training**: XGBoost regressor with one-hot encoding for categorical features
@@ -19,7 +19,7 @@ This project fetches EV charging station data from the NREL API and weather data
 ```
 ├── src/
 │   ├── run_pipeline.py      # Orchestrates the full ETL + training pipeline
-│   ├── extract_api.py       # Fetches data from NRL and OpenWeatherMap APIs
+│   ├── extract_api.py       # Fetches data from NLR and OpenWeatherMap APIs
 │   ├── transform_load.py    # Cleans data and loads into SQLite
 │   ├── simulate_target.py   # Generates simulated utilization data
 │   ├── train_model.py       # Trains and evaluates XGBoost model
@@ -45,7 +45,7 @@ This project fetches EV charging station data from the NREL API and weather data
    ```
 4. Copy `.env.example` to `.env` and add your API keys:
    ```
-   NRL_KEY=your_nrel_api_key
+   NLR_KEY=your_nlr_api_key_here
    WEATHER_KEY=your_openweathermap_api_key
    ```
 
@@ -92,7 +92,7 @@ The dashboard includes:
 
 ## API Dependencies
 
-- [NREL Alternative Fuel Stations API](https://developer.nrel.gov/docs/transportation/alt-fuel-stations-v1/)
+- [NLR Alternative Fuel Stations API](https://developer.nrel.gov/docs/transportation/alt-fuel-stations-v1/)
 - [OpenWeatherMap Current Weather API](https://openweathermap.org/current)
 
 ## Tech Stack

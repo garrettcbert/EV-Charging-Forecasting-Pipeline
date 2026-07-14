@@ -9,3 +9,4 @@ python-dotenv
 shap
 streamlit
 pydeck
+altair
